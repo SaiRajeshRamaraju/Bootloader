@@ -8,31 +8,51 @@ start:
     mov ss, ax
     mov sp, 0x7C00  ; Setup stack pointer near top of segment
 
+    ; Write 'A' to serial to show we're alive
+    mov dx, 0x3F8
+    mov al, 'A'
+    out dx, al
+
+    ; Read entry point from 0x7BFC (we wrote it there in vm.rs)
+    mov dword ecx, [0x7BFC]
+
     ; Switch to protected mode
     cli
     lgdt [gdt_descriptor]
-    mov eax, cr0
-    or eax, 0x1
-    mov cr0, eax
+    mov ebx, cr0
+    or ebx, 0x1
+    mov cr0, ebx
     jmp 0x8:init_pm
 
 bits 32
 init_pm:
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    mov ss, ax
+    mov bx, 0x10
+    mov ds, bx
+    mov es, bx
+    mov fs, bx
+    mov gs, bx
+    mov ss, bx
     mov esp, 0x7C00
     
     ; Setup Multiboot signature to pass to kernel
     mov eax, 0x2BADB002 ; Multiboot magic
-    mov ebx, 0x7000     ; address of Multiboot info
+    mov ebx, 0x7000     ; dummy address of Multiboot info
+
+    ; Write 'B' to serial
+    mov dx, 0x3F8
+    mov al, 'B'
+    out dx, al
+
+    ; ecx contains the entry point previously read before entering protected mode
+    ; just to be safe, we re-read it.
+    mov ecx, dword [0x7BFC]
     
-    ; Setup kernel args and jump.
-    mov ecx, 0x100000
-    
+    ; Write 'C' to serial
+    mov dx, 0x3F8
+    mov al, 'C'
+    out dx, al
+
+    ; Jump to entry point
     jmp ecx
     
 hang:

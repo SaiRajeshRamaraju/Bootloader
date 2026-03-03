@@ -1,5 +1,5 @@
 bits 16
-org 0x7C00          ; BIOS loads the bootloader here in real mode
+org 0x7C00
 
 start:
     ; Set up segment registers
@@ -8,86 +8,57 @@ start:
     mov ss, ax
     mov sp, 0x7C00  ; Setup stack pointer near top of segment
 
-    ; Clear the screen
-    call clearscreen
-
-    ; Move cursor to top-left (row 0, col 0)
-    mov dx, 0x0000      ; DH = row, DL = col
-    push dx
-    call movecursor
-    add sp, 2
-
-    ; Print the message
-    push msg
-    call print
-    add sp, 2
-
-    ; Halt
+    ; Switch to protected mode
     cli
+    lgdt [gdt_descriptor]
+    mov ebx, cr0
+    or ebx, 0x1
+    mov cr0, ebx
+    jmp 0x8:init_pm
+
+bits 32
+init_pm:
+    mov bx, 0x10
+    mov ds, bx
+    mov es, bx
+    mov fs, bx
+    mov gs, bx
+    mov ss, bx
+    mov esp, 0x7C00
+    
+    ; Setup Multiboot signature to pass to kernel
+    mov eax, 0x2BADB002 ; Multiboot magic
+    mov ebx, 0x7000     ; dummy address of Multiboot info
+
+    ; Directly jump to the kernel loaded at 1MB
+    mov ecx, 0x100000
+    jmp ecx
+    
+hang:
     hlt
+    jmp hang
 
-; Clears the screen using BIOS interrupt 10h, function 07h
-clearscreen:
-    push bp
-    mov bp, sp
-    pusha
+gdt_descriptor:
+    dw gdt_end - gdt_start - 1
+    dd gdt_start
 
-    mov ah, 0x07        ; Scroll window
-    mov al, 0x00        ; Clear entire screen
-    mov bh, 0x07        ; Attribute: light gray on black
-    mov cx, 0x0000      ; Upper-left corner
-    mov dx, 0x184F      ; Lower-right (row 24, col 79)
-    int 0x10            ; BIOS video interrupt
+gdt_start:
+    dq 0x0
+gdt_code:     ; CS will point to this selector
+    dw 0xFFFF ; Limit (low)
+    dw 0x0    ; Base (low)
+    db 0x0    ; Base (middle)
+    db 10011010b ; Access: Present, Ring 0, Code, Exec/Read
+    db 11001111b ; Flags: 4KB gran, 32-bit, Limit (high)
+    db 0x0    ; Base (high)
+gdt_data:
+    dw 0xFFFF
+    dw 0x0
+    db 0x0
+    db 10010010b ; Access: Present, Ring 0, Data, Read/Write
+    db 11001111b
+    db 0x0
+gdt_end:
 
-    popa
-    mov sp, bp
-    pop bp
-    ret
-
-; Moves the cursor to a specific position
-; Argument: DX = (row << 8 | col)
-movecursor:
-    push bp
-    mov bp, sp
-    pusha
-
-    mov dx, [bp+4]      ; Get argument (cursor pos)
-    mov ah, 0x02        ; Set cursor position
-    mov bh, 0x00        ; Page number 0
-    int 0x10
-
-    popa
-    mov sp, bp
-    pop bp
-    ret
-
-; Prints a null-terminated string at the current cursor position
-; Argument: [bp+4] = pointer to string
-print:
-    push bp
-    mov bp, sp
-    pusha
-
-    mov si, [bp+4]      ; Load string pointer
-    mov ah, 0x0E        ; Teletype output
-
-.print_loop:
-    lodsb               ; Load next byte from DS:SI into AL
-    or al, al
-    jz .done            ; If null terminator, end
-    int 0x10            ; BIOS teletype output
-    jmp .print_loop
-
-.done:
-    popa
-    mov sp, bp
-    pop bp
-    ret
-
-; Message string
-msg: db "Hello, assembly", 0
-
-; Boot sector padding and signature
 times 510 - ($ - $$) db 0
-dw 0xAA55             ; Boot signature
-
+dw 0xAA55
